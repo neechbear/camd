@@ -112,6 +112,9 @@ sub store_image {
 		rotate_images($tmpfile,$destfile,$imgdir,$keep);
 	}
 
+	File::Slurp::write_file("$destfile/message.txt", $_[2])
+		if defined $_[2] && $_[2] =~ /\S+/;
+
 	my $return = {
 			'keep' => $keep,
 			'tmpfile' => $tmpfile,
