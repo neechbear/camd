@@ -5,6 +5,7 @@ use threads;
 use Thread::Queue;
 use Proc::DaemonLite;
 use Getopt::Std qw();
+use POSIX qw(strftime);
 
 my $opts = {};
 Getopt::Std::getopts('hvdr:w:c:p:s:k:m:', $opts);
@@ -40,19 +41,89 @@ sub GetImage {
 	my $sleep_wait = 0.25;
 	my $host = $opts->{w} || 'webcam.tfb.net';
 	my $resolution = $opts->{r} || '352x288';
-	my $compression = $opts->{c} || 50;
+	#my $resolution = $opts->{r} || '320x240';
+	my $compression = $opts->{c} || 40;
 	my $port = $opts->{P} || 80;
 	my $imgurl = sprintf('http://%s:%d/axis-cgi/jpg/image.cgi?resolution=%s&compression=%d',
-					$host, $port, $resolution, $compression);
+					$host, $port, '640x480', 5);
 
 	for (;;) {
 		if ($imgq->pending < 2) {
-			eval { $imgq->enqueue(LWP::Simple::get($imgurl)); };
+			eval {
+				my $img = ProcessImage(LWP::Simple::get($imgurl),
+						resolution => $resolution,
+						compression => $compression,
+					);
+				$imgq->enqueue($img);
+			};
 			print $@ ? '{' : '<';
 		} else {
 			Time::HiRes::sleep($sleep_wait);
 		}
 	}
+}
+
+sub ProcessImage {
+	my $img = shift;
+	my $opt = { @_ };
+	require Image::Magick;
+
+	my $msg = `cat /tmp/caption 2>/dev/null` || '';
+	my $quality = defined $opt->{compression} ? 100 - $opt->{compression} : 70;
+	my ($width,$height) = defined $opt->{resolution} ? split(/\D+/,$opt->{resolution}) : (352,288);
+
+	my $image = Image::Magick->new(magick => 'jpg');
+	$image->BlobToImage($img);
+	$image->Set(quality => $quality);
+	$image->Set(type => "TrueColorMatte");
+	$image->Resize(width => $width, height => $height);
+	$image->Comment(sprintf('Copyright (c)%04d Nicola Worthington. All rights reserved.', (localtime(time))[5]+1900) );
+# http://studio.imagemagick.org/pipermail/magick-users/2003-June/009442.html
+
+	$image->Draw(
+			stroke => '#666666',
+			fill => '#ffffff',
+			primitive => 'rectangle',
+			points => sprintf('%d,%d %d,%d',0,0,$width-1,14),
+		);
+
+	$image->Draw(
+			stroke => '#898E79',
+			fill => '#898E79',
+			primitive => 'rectangle',
+			points => sprintf('%d,%d %d,%d',81,2,$width-3,12),
+		);
+
+	$image->Annotate(
+			font => '/home/nicolaw/bin/Silkscreen.ttf',
+			pointsize => 8,
+			fill => '#ffffff',
+			text => strftime('%Y-%m-%d %H:%M:%S',localtime),
+			x => 85,
+			y => 10,
+		);
+
+	$image->Annotate(
+			font => '/home/nicolaw/bin/Silkscreen.ttf',
+			pointsize => 8,
+			align => 'right',
+			fill => '#ffffff',
+			text => uc($msg),
+			x => $width-6,
+			y => 10,
+		);
+
+	my $overlay = Image::Magick->new;
+	$overlay->ReadImage('/home/nicolaw/bin/bisexual.png');
+	$overlay->Set(type => "TrueColorMatte");
+	$image->Composite(
+			compose => 'over',
+			image => $overlay,
+			x => 0, y => 0,
+			opacity => 50,
+		);
+
+	return $image->ImageToBlob;
 }
 
 sub SendImage {
