@@ -43,10 +43,10 @@ sub TailLog {
 
 	my @tails = map { File::Tail->new(
 			'name' => $_,
-			'maxinterval' => 10,
-			'interval' => 2,
-			'adjustafter' => 10,
-			'reset_tail' => 10,
+			'maxinterval' => 5,
+			'interval' => 1,
+			'adjustafter' => 2,
+			'reset_tail' => 5,
 			'ignore_nonexistant' => 1,
 		); } @weblogs;
 
@@ -75,6 +75,7 @@ sub SoapServer {
 	my $daemon = SOAP::Transport::HTTP::Daemon->new(
 			LocalAddr => $opts->{h} || 'www.neechi.co.uk',
 			LocalPort => $opts->{p} || 8021,
+			Reuse => 1,
 		);
 
 	$daemon->dispatch_to('WebCam::Server');

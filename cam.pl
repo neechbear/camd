@@ -8,7 +8,7 @@ use Getopt::Std qw();
 use POSIX qw(strftime);
 
 my $opts = {};
-Getopt::Std::getopts('hvdr:w:c:p:s:k:m:', $opts);
+Getopt::Std::getopts('hvdr:w:c:C:p:s:k:m:', $opts);
 printf("%s %s\n",$0,'$Id$'), exit if defined $opts->{v};
 printf("Syntax: %s [-h|-v] [-d] [-m <freeform message>]
         [-w <webcam host>] [-r <resolution>] [-c <compression>]
@@ -20,6 +20,7 @@ $| = 1;
 
 my %threads = ();
 my $imgq : shared = new Thread::Queue;
+my $viewers : shared = 0;
 
 for my $sub (qw(GetImage SendImage)) {
 	my $cref = eval("\\&$sub");
@@ -38,14 +39,14 @@ sub GetImage {
 	require LWP::Simple;
 	require Time::HiRes;
 
-	my $sleep_wait = 0.25;
+	my $sleep_wait = 0.05;
 	my $host = $opts->{w} || 'webcam.tfb.net';
 	my $resolution = $opts->{r} || '352x288';
-	#my $resolution = $opts->{r} || '320x240';
-	my $compression = $opts->{c} || 40;
+	my $compression = $opts->{c} || 30;
+	my $crop = $opts->{C} || '200x200+552+488';
 	my $port = $opts->{P} || 80;
-	my $imgurl = sprintf('http://%s:%d/axis-cgi/jpg/image.cgi?resolution=%s&compression=%d',
-					$host, $port, '640x480', 5);
+	my $imgurl = sprintf('http://%s:%d/axis-cgi/jpg/image.cgi?resolution=%s&compression=%d&date=0&text=0&showlength=1',
+					$host, $port, '640x480', 0);
 
 	for (;;) {
 		if ($imgq->pending < 2) {
@@ -53,6 +54,7 @@ sub GetImage {
 				my $img = ProcessImage(LWP::Simple::get($imgurl),
 						resolution => $resolution,
 						compression => $compression,
+						crop => $crop,
 					);
 				$imgq->enqueue($img);
 			};
@@ -69,6 +71,8 @@ sub ProcessImage {
 	require Image::Magick;
 
 	my $msg = `cat /tmp/caption 2>/dev/null` || '';
+	$msg = 'PAUSED - WAIT 10 SECONDS' if !$viewers;
+
 	my $quality = defined $opt->{compression} ? 100 - $opt->{compression} : 70;
 	my ($width,$height) = defined $opt->{resolution} ? split(/\D+/,$opt->{resolution}) : (352,288);
 
@@ -76,7 +80,12 @@ sub ProcessImage {
 	$image->BlobToImage($img);
 	$image->Set(quality => $quality);
 	$image->Set(type => "TrueColorMatte");
+
+	if (defined $opt->{crop}) {
+		$image->Crop(x=>130, y=>100, width => 480, height=>360);
+	}
 	$image->Resize(width => $width, height => $height);
+
 	$image->Comment(sprintf('Copyright (c)%04d Nicola Worthington. All rights reserved.', (localtime(time))[5]+1900) );
 # http://studio.imagemagick.org/pipermail/magick-users/2003-June/009442.html
 
@@ -114,7 +123,10 @@ sub ProcessImage {
 		);
 
 	my $overlay = Image::Magick->new;
-	$overlay->ReadImage('/home/nicolaw/bin/bisexual.png');
+#	my @overlay_files = glob('/home/nicolaw/bin/80x15/*.png');
+#	my $overlay_file = $overlay_files[int(rand(@overlay_files))];
+	my $overlay_file = '/home/nicolaw/bin/cam.png';
+	$overlay->ReadImage($overlay_file);
 	$overlay->Set(type => "TrueColorMatte");
 	$image->Composite(
 			compose => 'over',
@@ -143,6 +155,7 @@ sub SendImage {
 	while (my $imgbin = $imgq->dequeue) {
 		eval {
 			my $results = $soap->store_image($key,$imgbin,$msg)->result || {};
+			$viewers = $results->{sleep} > 1 ? 0 : 1;
 			print $results->{bytes_written} ? '>' : '}';
 			sleep $results->{sleep} if
 				defined $results->{sleep} && $results->{sleep} =~ /^\d+$/;
