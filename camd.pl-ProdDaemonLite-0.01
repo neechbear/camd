@@ -1,61 +1,24 @@
 #!/home/nicolaw/webroot/perl-5.8.7/bin/perl -w
 
-use constant DEFAULT => {
-		SOAP_SERVER      => 'www.neechi.co.uk',
-		SOAP_SERVER_PORT => 8021,
-		SOAP_SERVER_KEY  => 'ec2b5a007a8d0431a36ecadc815e9d82',
-		WEBSERVER_LOGS   => [('/home/nicolaw/webroot/logs/www.neechi.co.uk/access.log',
-							  '/home/nicolaw/webroot/logs/bb-207-42-158-85.fallbr.tfb.net/access.log')],
-	};
-
-
-##############################################################
-#
-#
-#         NO USER SERVICABLE PARTS BEYOND THIS POINT!
-#
-#
-##############################################################
-
-
 use strict;
 use threads;
 use threads::shared;
-use Proc::DaemonLite qw();
+use Proc::DaemonLite;
 use Getopt::Std qw();
 
-# The following modules are loaded after this process has created
-# all of its worker threads. This ensures that we don't have every
-# module loaded in every thread, which saves a lot of memory.
-#      File::Tail
-#      SOAP::Transport::HTTP
-#      File::Slurp
-#      FindBin
-
-# Default command line options
-my $opts = {
-		l => DEFAULT->{WEBSERVER_LOGS},
-		h => DEFAULT->{SOAP_SERVER},
-		p => DEFAULT->{SOAP_SERVER_PORT},
-		k => DEFAULT->{SOAP_SERVER_KEY},
-	};
-
-# Parse command line options
-Getopt::Std::getopts('hvsdb:p:l:k:', $opts);
-printf("%s %s\n",$0,'$Id: camd.pl 722 2006-07-07 19:38:07Z nicolaw $'), exit if defined $opts->{v};
+my $opts = {};
+Getopt::Std::getopts('hvsdb:p:l:', $opts);
+printf("%s %s\n",$0,'$Id$'), exit if defined $opts->{v};
 printf("Syntax: %s [-h|-v] [-d] [-l <apache log>]
-        [-b <bind host>] [-p <port>]
-        [-k <key>]\n", $0), exit if defined $opts->{h};
+        [-b <bind host>] [-p <port>]\n", $0), exit if defined $opts->{h};
 
-my $daemon = Proc::DaemonLite->new;
-$daemon->daemonise if defined $opts->{d};
+init_server() if defined $opts->{d};
 
 $| = 1;
 
 my %threads = ();
 my $activity : shared = 0;
 
-# Create the worker threads
 for my $sub (qw(TailLog SoapServer)) {
 	my $cref = eval("\\&$sub");
 	print "Creating $sub thread ...\n";
@@ -68,11 +31,6 @@ for my $thread (threads->list) {
 
 exit;
 
-
-
-##############################
-# Thread sub routines
-
 sub TailLog {
 	my ($sub,$opts) = @_;
 	require File::Tail;
@@ -80,18 +38,15 @@ sub TailLog {
 	my $timeout = 15;
 	my $last_seen = time;
 	my $matchregex = qw(webcam\.jpg);
-	my @weblogs = defined $opts->{l} ?
-			ref($opts->{l}) eq 'ARRAY'
-				? @{$opts->{l}}
-				: split(/\s*:\s*/,$opts->{l})
-					: '/var/log/httpd/access_log';
+	my @weblogs = defined $opts->{l} ? split(/\s*:\s*/,$opts->{l}) :
+			('/home/nicolaw/webroot/logs/www.neechi.co.uk/access.log');
 
 	my @tails = map { File::Tail->new(
-			'name'               => $_,
-			'maxinterval'        => 5,
-			'interval'           => 1,
-			'adjustafter'        => 2,
-			'reset_tail'         => 5,
+			'name' => $_,
+			'maxinterval' => 5,
+			'interval' => 1,
+			'adjustafter' => 2,
+			'reset_tail' => 5,
 			'ignore_nonexistant' => 1,
 		); } @weblogs;
 
@@ -113,14 +68,13 @@ sub TailLog {
 	}
 }
 
-
 sub SoapServer {
 	my ($sub,$opts) = @_;
 	require SOAP::Transport::HTTP;
 
 	my $daemon = SOAP::Transport::HTTP::Daemon->new(
-			LocalAddr => $opts->{h},
-			LocalPort => $opts->{p},
+			LocalAddr => $opts->{h} || 'www.neechi.co.uk',
+			LocalPort => $opts->{p} || 8021,
 			Reuse => 1,
 		);
 
@@ -141,7 +95,7 @@ sub store_image {
 
 	my $imgdir = '/tmp/webcam';
 	my $keep = 20;
-	my $inactivity_sleep = 15;
+	my $inactivity_sleep = 10;
 	my $linkfrom = '/home/nicolaw/webroot/www/www.neechi.co.uk/webcam/webcam.jpg';
 	my $destfile = "$imgdir/cam.jpg";
 	my $tmpfile = "$destfile.".time().$$;
@@ -176,7 +130,6 @@ sub store_image {
 	return $return;
 }
 
-
 sub rotate_images {
 	my ($tmpfile,$destfile,$imgdir,$keep) = @_;
 
@@ -191,8 +144,6 @@ sub rotate_images {
 	rename $tmpfile, $destfile;
 }
 
-
 __END__
-
 
 

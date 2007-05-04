@@ -17,6 +17,7 @@ use constant DEFAULT => {
 		SOAP_SERVER_PORT  => 8021,               # SOAP server port
 		SOAP_SERVER       => 'www.neechi.co.uk', # SOAP server hostname/IP
 		SOAP_KEY          => 'ec2b5a007a8d0431a36ecadc815e9d82', # SOAP server key
+		SOAP_CLIENT_ID    => 'jeneechipad',      # SOAP server client webcam ID
 		WEBCAM_HOST       => 'webcam',           # Webcam hostname/IP
 		WEBCAM_PORT       => 80,                 # Webcam port
 		IMAGE_RESOLUTION  => '352x288',          # Resolution
@@ -50,6 +51,7 @@ use POSIX qw(strftime);
 #      LWP::Simple
 #      Time::HiRes
 #      SOAP::Lite
+#      FindBin
 
 # Default command line options
 my $opts = {
@@ -63,6 +65,7 @@ my $opts = {
 		f => DEFAULT->{UPLOAD_FREQUENCY},
 		m => DEFAULT->{CAPTION},
 		C => DEFAULT->{CROPPING},
+		i => DEFAULT->{SOAP_CLIENT_ID},
 	};
 
 # Parse command line options
@@ -71,7 +74,7 @@ printf("%s %s\n",$0,'$Id$'), exit if defined $opts->{v};
 printf("Syntax: %s [-h|-v] [-d] [-m <freeform message>]
         [-w <webcam host>] [-r <resolution>] [-c <compression>]
         [-s <server host>] [-p <port>] [-k <key>]
-        [-f <upload frequency>]\n", $0), exit if defined $opts->{h};
+        [-i <client id>] [-f <upload frequency>]\n", $0), exit if defined $opts->{h};
 
 # Daemonise
 Proc::DaemonLite::init_server() if defined $opts->{d};
@@ -226,7 +229,7 @@ sub SendImage {
 
 	while (my $imgbin = $imgq->dequeue) {
 		eval {
-			my $results = $soap->store_image($opts->{k},$imgbin,$opts->{m})->result || {};
+			my $results = $soap->store_image($opts->{k},$imgbin,$opts->{m},$opts->{i})->result || {};
 			$viewers = $results->{sleep} > 1 ? 0 : 1;
 			print $results->{bytes_written} ? '>' : '}';
 			sleep $results->{sleep} if
