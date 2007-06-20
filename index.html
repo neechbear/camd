@@ -1,0 +1,98 @@
+<%flags>
+	inherit => undef
+</%flags>
+<%method title>My Computer: [Logitech Webcam]</%method>
+<%init>
+	use Image::Size qw();
+	my ($w,$h) = Image::Size::imgsize('/tmp/webcam/cam.jpg');
+	$h -= 2 if $flash;
+	unless (defined $refresh && $refresh =~ /^\d+$/ && $refresh >= 1) {
+		$refresh = 1;
+	}
+</%init>
+<%args>
+	$popup => 0
+	$refresh => 1
+	$flash => 0
+</%args>
+<html>
+	<head>
+		<title><& SELF:title &></title>
+		<style type="text/css">
+			body,BODY {
+				margin: 0px 0px 0px 0px;
+				padding: 0px 0px 0px 0px;
+			}
+			td,p,body,BODY,input {
+				font-size: 8pt;
+				font-family: sans-serif;
+			}
+			a {
+				text-decoration: none;
+				color: #666666;
+			}
+			img {
+				border: 0px;
+			}
+		</style>
+		<script type="text/javascript">
+			<!--
+			function holdUp() {
+				refreshFreq=1;
+				setTimeout("freshPic()", refreshFreq*<% ($refresh * 1000) - 50 %>);
+			}
+			function freshPic() {
+				var currentPath=document.campic.src;
+				var trimmedPath=new Array();
+				trimmedPath=currentPath.split("?");
+				document.campic.src = trimmedPath[0] + "?" + Math.random();
+				holdUp();
+			}
+			// -->
+		</script>
+	</head>
+% if ($popup && $flash) {
+	<body
+		TOPMARGIN="0" LEFTMARGIN="0" MARGINHEIGHT="0" MARGINWIDTH="0"><embed
+			src="flashrefresh.swf?urlcampic=webcam.jpg&refreshrate=<% $refresh %>"
+			width="<% $w %>" height="<% $h %>" type="application/x-shockwave-flash"></embed></body>
+% } elsif ($popup && !$flash) {
+	<body onLoad="holdUp()"
+		TOPMARGIN="0" LEFTMARGIN="0" MARGINHEIGHT="0" MARGINWIDTH="0"><img
+		src="webcam.jpg" width="<% $w %>" height="<% $h %>"
+		alt="JeneechiCam" name="campic" ismap usemap="webcam" /><map name="webcam"><area
+		shape="rect" coords="0,0 80,15" href="http://www.amazon.co.uk/gp/registry/1VZXC59ESWYK0?sort=priority"
+		alt="My Wishlist" target="_blank"
+		><!--<area SHAPE=default HREF="index.html">--></map></body>
+% } else {
+	<body <% ($flash ? '' : 'onLoad="holdUp()"') %>
+		TOPMARGIN="0" LEFTMARGIN="0" MARGINHEIGHT="0" MARGINWIDTH="0">
+		<center>
+		<table width="100%" height="100%" align="center" valign="middle">
+			<tr><td colspan="3">&nbsp;</td></tr>
+			<tr>
+				<td>&nbsp;</td>
+%	if ($flash) {
+				<td width="<% $w %>" height="<% $h %>" align="center" valign="middle"><embed
+		src="flashrefresh.swf?urlcampic=webcam.jpg&refreshrate=<% $refresh %>"
+		width="<% $w %>" height="<% $h %>" type="application/x-shockwave-flash"></embed></td>
+%	} else {
+				<td width="<% $w %>" height="<% $h %>" align="center" valign="middle"><img
+		onclick="window.open('?popup=true&refresh=<% $refresh %>&flash=<% $flash %>', 'webcam','width=<% $w %>,height=<% $h %>,menubar=no,status=no,location=no,toolbar=no,scrollbars=no,resizable=no,directories=no,minimizable=no,dialog=yes,personalbar=no,titlebar=no,close=no,alwaysRaised=yes')"
+		src="webcam.jpg" width="<% $w %>" height="<% $h %>"
+		alt="JeneechiCam" name="campic" ismap usemap="webcam" /><map name="webcam"><area
+		shape="rect" coords="0,0 80,15" href="http://www.amazon.co.uk/gp/registry/1VZXC59ESWYK0?sort=priority"
+		alt="My Wishlist" target="_blank"></td>
+%	}
+				<td>&nbsp;</td>
+			<tr>
+				<td>&nbsp;</td>
+<!--				<td align="center" valign="top"><a href="http://www.amazon.co.uk/gp/registry/1VZXC59ESWYK0?sort=priority">Buy me stuff from my Amazon wishlist!</td> -->
+					<td align="center" valign="top"><a href="?refresh=<% $refresh %>&flash=<% !$flash %>">Click here if the picture is not changing</a></td>
+				<td>&nbsp;</td>
+			</tr>
+		</table>
+		</center>
+	</body>
+% }
+</html>
