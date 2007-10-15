@@ -1,4 +1,6 @@
-#!/home/nicolaw/perl-5.8.8/bin/perl -w
+#!/usr/bin/perl -w
+
+package Cam;
 
 use constant COPYRIGHT         => sprintf('Copyright (c)%04d Nicola Worthington. All rights reserved.', (localtime(time))[5]+1900);
 use constant IMAGE_FORMAT      => 'jpg';
@@ -18,8 +20,10 @@ use constant DEFAULT => {
 		SOAP_SERVER       => 'www.neechi.co.uk', # SOAP server hostname/IP
 		SOAP_KEY          => 'ec2b5a007a8d0431a36ecadc815e9d82', # SOAP server key
 		SOAP_CLIENT_ID    => 'jeneechipad',      # SOAP server client webcam ID
-		WEBCAM_HOST       => 'webcam',           # Webcam hostname/IP
+		WEBCAM_HOST       => 'webcam2',          # Webcam hostname/IP
 		WEBCAM_PORT       => 80,                 # Webcam port
+		WEBCAM_USERNAME   => 'cam_pl',           # Webcam username
+		WEBCAM_PASSWORD   => 'ec2b5a00',         # Webcam password
 		IMAGE_RESOLUTION  => '352x288',          # Resolution
 		IMAGE_COMPRESSION => 30,                 # Compression %
 		UPLOAD_FREQUENCY  => 0.05,               # Upload frequency
@@ -42,7 +46,7 @@ use threads;
 use Thread::Queue;
 use Proc::DaemonLite;
 use Getopt::Std qw();
-use POSIX qw(strftime);
+use POSIX qw(strftime uname);
 
 # The following modules are loaded after this process has created
 # all of its worker threads. This ensures that we don't have every
@@ -105,18 +109,32 @@ exit;
 
 sub GetImage {
 	my ($sub,$opts) = @_;
-	require LWP::Simple;
 	require Time::HiRes;
 
 	my $imgurl = sprintf('http://%s:%d/axis-cgi/jpg/image.cgi?resolution=%s&compression=%d&date=0&text=0&showlength=1',
 					$opts->{w}, $opts->{P}, '640x480', 0);
 
 	for (;;) {
-		if ($imgq->pending < 2) {
+		if ($imgq->pending <= 1) {
 			eval {
-				my $img = ProcessImage(LWP::Simple::get($imgurl), $opts);
-				$imgq->enqueue($img);
+				if ($opts->{w} =~ m,^/dev/video\d*,i && -e $opts->{w} && -x '/usr/bin/vgrabbj') {
+					#my $data = `/usr/bin/vgrabbj -q 100 -i sif -o jpg  -d $opts->{w} -g 2>/dev/null`;
+					my $data = `/usr/bin/vgrabbj -q 100 -i sif -g -o jpg -d $opts->{w} 2>/dev/null`;
+					my $img = ProcessImage($data, $opts);
+					$imgq->enqueue($img);
+
+				} else {
+					my $ua = new LWP::UserAgent2;
+					my $resp = $ua->get($imgurl);
+					if ($resp->is_success) {
+						my $img = ProcessImage($resp->content, $opts);
+						$imgq->enqueue($img);
+					} else {
+						die $resp->status_line;
+					}
+				}
 			};
+			warn $@ if $@;
 			print $@ ? '{' : '<';
 		} else {
 			Time::HiRes::sleep($opts->{f});
@@ -239,6 +257,16 @@ sub SendImage {
 	}
 }
 
+
+package LWP::UserAgent2;
+use base qw(LWP::UserAgent);
+
+sub get_basic_credentials {
+	return (
+			Cam::DEFAULT->{WEBCAM_USERNAME},
+			Cam::DEFAULT->{WEBCAM_PASSWORD}
+		);
+}
 
 __END__
 
